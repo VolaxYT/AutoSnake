@@ -1,5 +1,6 @@
 #include <config.h>
 #include <grid.h>
+#include <snake_game.h>
 
 // Charge et compile un shader depuis un fichier
 unsigned int make_module(const std::string& filepath, unsigned int type){
@@ -91,6 +92,10 @@ int main(int argc, char const *argv[])
     glUniformMatrix4fv(glGetUniformLocation(shader, "projection"), 1, GL_FALSE, glm::value_ptr(proj));
 
     Grid grid;
+    SnakeGame game;
+
+    double step_interval = 0.15;
+    double last_step = glfwGetTime();
 
     while(!glfwWindowShouldClose(window)){
         glfwPollEvents();
@@ -99,10 +104,46 @@ int main(int argc, char const *argv[])
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         grid.draw();
+
         static int prev_up = GLFW_RELEASE;
         static int prev_down = GLFW_RELEASE;
         static int prev_left = GLFW_RELEASE;
         static int prev_right = GLFW_RELEASE;
+        static int prev_reset = GLFW_RELEASE;
+
+        int cur_up = glfwGetKey(window, GLFW_KEY_UP);
+        int cur_down = glfwGetKey(window, GLFW_KEY_DOWN);
+        int cur_left = glfwGetKey(window, GLFW_KEY_LEFT);
+        int cur_right = glfwGetKey(window, GLFW_KEY_RIGHT);
+        int cur_reset = glfwGetKey(window, GLFW_KEY_R);
+
+        if(cur_up == GLFW_PRESS && prev_up == GLFW_RELEASE){
+            game.change_direction(Direction::UP);
+        }
+        else if(cur_down == GLFW_PRESS && prev_down == GLFW_RELEASE){
+            game.change_direction(Direction::DOWN);
+        }
+        else if(cur_right == GLFW_PRESS && prev_right == GLFW_RELEASE){
+            game.change_direction(Direction::RIGHT);
+        }
+        else if(cur_left == GLFW_PRESS && prev_left == GLFW_RELEASE){
+            game.change_direction(Direction::LEFT);
+        }
+        if(cur_reset == GLFW_PRESS && prev_reset == GLFW_RELEASE){
+            game.reset();
+        }
+
+        prev_up    = cur_up;
+        prev_down  = cur_down;
+        prev_left  = cur_left;
+        prev_right = cur_right;
+        prev_reset = cur_reset;
+
+        double now = glfwGetTime();
+        if(now - last_step >= step_interval){
+            game.update(grid);
+            last_step = now;
+        }
 
         glfwSwapBuffers(window);
     }

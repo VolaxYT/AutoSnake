@@ -62,6 +62,17 @@ public:
         glBindVertexArray(0);
     }
 
+
+    Cell get(int x, int y) const { return cells[y][x]; }
+
+    void set(int x, int y, Cell c){ cells[y][x] = c; }
+
+    void clear(){ 
+        for(auto& row : cells)
+            for(auto& c : row)
+                c = Cell::EMPTY;
+    }
+
     ~Grid(){
         glDeleteVertexArrays(1, &VAO);
         glDeleteBuffers(1, &VBO);
