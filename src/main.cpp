@@ -1,6 +1,8 @@
 #include <config.h>
 #include <grid.h>
 #include <snake_game.h>
+#include <neural_net.h>
+#include <dqn.h>
 
 // Charge et compile un shader depuis un fichier
 unsigned int make_module(const std::string& filepath, unsigned int type){
@@ -73,6 +75,7 @@ int main(int argc, char const *argv[])
         glfwTerminate();
         return -1;
     }
+    glfwSwapInterval(0);
     glfwMakeContextCurrent(window);
 
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
@@ -93,9 +96,21 @@ int main(int argc, char const *argv[])
 
     Grid grid;
     SnakeGame game;
+    Direction dirs[] = {Direction::UP, Direction::DOWN, Direction::LEFT, Direction::RIGHT};
+    DQN dqn;
 
-    double step_interval = 0.15;
+    double step_interval = 0.01;
     double last_step = glfwGetTime();
+    bool autoplay = false;
+    bool render = true;
+    int iterations = 1;
+
+    std::string model_path = base + "/model.bin";
+
+    if(std::filesystem::exists(model_path)){
+        std::cerr << "Chargement du modèle..." << std::endl;
+        dqn.load(model_path);
+    }
 
     while(!glfwWindowShouldClose(window)){
         glfwPollEvents();
@@ -103,19 +118,20 @@ int main(int argc, char const *argv[])
             glfwSetWindowShouldClose(window, true);
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        grid.draw();
 
         static int prev_up = GLFW_RELEASE;
         static int prev_down = GLFW_RELEASE;
         static int prev_left = GLFW_RELEASE;
         static int prev_right = GLFW_RELEASE;
         static int prev_reset = GLFW_RELEASE;
+        static int prev_t = GLFW_RELEASE;
 
         int cur_up = glfwGetKey(window, GLFW_KEY_UP);
         int cur_down = glfwGetKey(window, GLFW_KEY_DOWN);
         int cur_left = glfwGetKey(window, GLFW_KEY_LEFT);
         int cur_right = glfwGetKey(window, GLFW_KEY_RIGHT);
         int cur_reset = glfwGetKey(window, GLFW_KEY_R);
+        int cur_t = glfwGetKey(window, GLFW_KEY_T);
 
         if(cur_up == GLFW_PRESS && prev_up == GLFW_RELEASE){
             game.change_direction(Direction::UP);
@@ -132,20 +148,53 @@ int main(int argc, char const *argv[])
         if(cur_reset == GLFW_PRESS && prev_reset == GLFW_RELEASE){
             game.reset();
         }
+        if(cur_t == GLFW_PRESS && prev_t == GLFW_RELEASE){
+            render = !render;
+        }
 
-        prev_up    = cur_up;
-        prev_down  = cur_down;
-        prev_left  = cur_left;
+        prev_up = cur_up;
+        prev_down = cur_down;
+        prev_left = cur_left;
         prev_right = cur_right;
         prev_reset = cur_reset;
+        prev_t = cur_t;
 
         double now = glfwGetTime();
         if(now - last_step >= step_interval){
-            game.update(grid);
             last_step = now;
+            if(game.is_dead()){
+                iterations++;
+                if(iterations % 10 == 0)
+                    dqn.save(model_path);
+                for(int i = 0; i < 10; i++){
+                    auto t1 = std::chrono::high_resolution_clock::now();
+                    dqn.train();
+                    auto t2 = std::chrono::high_resolution_clock::now();
+                    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
+                    std::cerr << "train() : " << ms << " ms" << std::endl;
+                }
+
+                game.reset();
+                grid.clear();
+            }else{
+                auto state = game.get_state();
+                int action  = dqn.select_action(state);
+                game.change_direction(dirs[action]);
+                float reward = game.update(grid);
+
+                auto next_state = game.get_state();
+                bool done = game.is_dead();
+                dqn.store(state, action, reward, next_state, done);
+            }
         }
 
-        glfwSwapBuffers(window);
+        std::string title = "AutoSnake | Iterations: " + std::to_string(iterations) + " | Render: " + std::string(render ? "ON" : "OFF");
+        glfwSetWindowTitle(window, title.c_str());
+
+        if(render){
+            grid.draw();
+            glfwSwapBuffers(window);
+        }
     }
 
     glDeleteProgram(shader);
